@@ -114,10 +114,10 @@ void enc_sendpacket(uint8_t* data, uint16_t len);
 uint8_t enc_receivepacket(uint8_t* date, uint16_t len);
 void writePhy(uint8_t address, uint16_t data);
 uint16_t readPhy(uint8_t address);
-void enc_init(uint8_t*macaddr);
+void enc_init();
 void check_version();
 void check_duplex();
-void sendarp(uint8_t* macaddr);
+void sendarp();
 
 #endif /* ENC_H */
 

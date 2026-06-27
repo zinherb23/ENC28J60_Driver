@@ -55,7 +55,6 @@ extern UART_HandleTypeDef huart2;
 //no?
 
 
-
 #define FRAMELEN 1500
 
 //PHCON1
@@ -67,9 +66,10 @@ extern UART_HandleTypeDef huart2;
 #define SELECT()   HAL_GPIO_WritePin(CS_PORT,CS_PIN, GPIO_PIN_RESET);
 #define DESELECT() HAL_GPIO_WritePin(CS_PORT,CS_PIN, GPIO_PIN_SET);
 
+//others
 static uint16_t NextPacketPtr;
-
 #define RXSTAT_OK      0x80
+uint8_t macaddr[6] = {0x00,0x11,0x22,0x33,0x44,0x55};
 
 //read and write 1 byte
 static uint8_t SPI_ReadWrite(uint8_t tx){
@@ -179,7 +179,7 @@ void writePhy(uint8_t address, uint16_t data){
 	}
 }
 
-void enc_init(uint8_t* macaddr){
+void enc_init(){
 	uint16_t retry = 0;
 	writeOp(SOFT_RESET,0,SOFT_RESET);
 	HAL_Delay(1);
@@ -262,13 +262,17 @@ void enc_init(uint8_t* macaddr){
 		int len = sprintf(msg, "Full initiation is failed.\n\r");
 		HAL_UART_Transmit(&huart2, (uint8_t*)msg, len, HAL_MAX_DELAY);
 	}
+	HAL_Delay(2000);
 }
 
 void check_duplex(){
 	uint16_t retry = 0;
 	//check LLSTATE
 	if(!(readPhy(PHSTAT1) & (1<<2))){
-		  uint8_t meg[] = {"Link was failed\r\n"};
+		  uint8_t meg[] = {"LLSTATE was failed\r\n"};
+		  HAL_UART_Transmit(&huart2,meg,sizeof(meg),HAL_MAX_DELAY);
+	}else{
+		  uint8_t meg[] = {"LLSTATE was active\r\n"};
 		  HAL_UART_Transmit(&huart2,meg,sizeof(meg),HAL_MAX_DELAY);
 	}
 
@@ -280,12 +284,12 @@ void check_duplex(){
 	}while(retry < 0xFF);
 	if(retry >= 0xFF){
 		char msg[64] = {0};
-		int len = sprintf(msg, "Link is failed\r\n");
+		int len = sprintf(msg, "LSTATE is failed\r\n");
 		HAL_UART_Transmit(&huart2, (uint8_t*)msg, len, HAL_MAX_DELAY);
 		return;
 	}else{
 		char msg[64] = {0};
-		int len = sprintf(msg, "Link is active\r\n");
+		int len = sprintf(msg, "LSTATE is active\r\n");
 		HAL_UART_Transmit(&huart2, (uint8_t*)msg, len, HAL_MAX_DELAY);
 	}
 
@@ -297,6 +301,7 @@ void check_duplex(){
 		  uint8_t meg[] = {"Full duplex is NOT active\r\n"};
 		  HAL_UART_Transmit(&huart2,meg,sizeof(meg),HAL_MAX_DELAY);
 	}
+	HAL_Delay(2000);
 }
 
 void check_version(void){
@@ -304,6 +309,7 @@ void check_version(void){
 	char msg[50];
 	int len = sprintf(msg, "EREVID = 0x%02X\r\n", erevid);
 	HAL_UART_Transmit(&huart2, (uint8_t*)msg, len, HAL_MAX_DELAY);
+	HAL_Delay(2000);
 }
 
 void enc_sendpacket(uint8_t* data, uint16_t len){
@@ -337,30 +343,7 @@ void enc_sendpacket(uint8_t* data, uint16_t len){
 		int len = sprintf(msg, "Transmit failed: unknown\r\n");
 		HAL_UART_Transmit(&huart2, (uint8_t*)msg, len, HAL_MAX_DELAY);
 	}
-
-	/*
-	//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	set_bank(ETXSTL);
-	writeOp(WRITE_CTRL_REG,ETXSTL,TXBUFF_START & 0xFF);
-	writeOp(WRITE_CTRL_REG,ETXSTH,TXBUFF_START >> 8);
-	//writeOp(WRITE_CTRL_REG,EWRPTL,TXBUFF_START & 0xFF);
-	//writeOp(WRITE_CTRL_REG,EWRPTH,TXBUFF_START >> 8);
-
-	uint8_t control = 0x00;
-	write_buffer(&control, 1);
-	write_buffer(data, len);
-
-	//uint16_t end = TXBUFF_START+len;
-	//writeOp(WRITE_CTRL_REG,ETXNDL,end & 0xFF);
-	//writeOp(WRITE_CTRL_REG,ETXNDH,end >> 8);
-
-	writeOp(BIT_FIELD_SET,ECON1,0x08);
-	//???
-	uint8_t megdata = readOp(READ_CTRL_REG,ECON1);
-	char meg[30];
-	int meglen = sprintf(meg,"sendpacket_ECON1 = %#04x\r\n",megdata);
-	HAL_UART_Transmit(&huart2,(uint8_t*)meg,meglen,HAL_MAX_DELAY);
-	*/
+	HAL_Delay(2000);
 }
 
 uint8_t enc_receivepacket(uint8_t* date, uint16_t len){
@@ -412,11 +395,14 @@ uint8_t enc_receivepacket(uint8_t* date, uint16_t len){
 	enc_write(ERXRDPTH,(NextPacketPtr>>8));
 	//reduce packet counter
 	writeOp(BIT_FIELD_SET,ECON2,ECON2_PKTDEC);
+
+	HAL_Delay(2000);
 	return(rxlen);
 }
 
 
-void sendarp(uint8_t* macaddr){
+void sendarp(){
+
 	uint8_t arp_request[60] = {0};
 
 	//ethernet header
@@ -471,252 +457,7 @@ void sendarp(uint8_t* macaddr){
 	arp_request[41] = 212;
 	//send arp
 	enc_sendpacket(arp_request,sizeof(arp_request));
+	HAL_Delay(2000);
 }
-
-
-
-
-/*
-//read and write data from register
-static uint8_t readOp(uint8_t op, uint8_t address){
-	uint8_t tx[3] = { op | (address & ADDR_MASK), 0x00, 0x00};
-	uint8_t rx[3];
-	SELECT();
-	HAL_SPI_TransmitReceive(&hspi3,tx,rx,sizeof(tx),HAL_MAX_DELAY);
-	uint8_t temp = 0;
-	if(address & 0x80){
-		temp = rx[2];
-	}else{
-		temp = rx[1];
-	}
-	DESELECT();
-	return temp;
-}
-
-static void writeOp(uint8_t op, uint8_t address, uint8_t data){
-	uint8_t tx[2] = { op | (address & ADDR_MASK), data};
-	SELECT();
-	HAL_SPI_Transmit(&hspi3,tx,2,HAL_MAX_DELAY);
-	DESELECT();
-}
-
-
-
-//read and write data from buffer
-static void read_buffer(uint8_t* data, uint16_t len){
-	uint8_t cmd = READ_BUFFER_MEM;
-	SELECT();
-	HAL_SPI_Transmit(&hspi3,&cmd,1,HAL_MAX_DELAY);
-	HAL_SPI_Receive(&hspi3,data,len,HAL_MAX_DELAY);
-	DESELECT();
-}
-
-static void write_buffer(uint8_t* data, uint16_t len){
-	uint8_t cmd = WRITE_BUFFER_MEM;
-	SELECT();
-	HAL_SPI_Transmit(&hspi3,&cmd,1,HAL_MAX_DELAY);
-	HAL_SPI_Transmit(&hspi3,data,len,HAL_MAX_DELAY);
-	DESELECT();
-}
-
-
-//set the bank
-static uint8_t currentbank = 0x00;
-static void set_bank(uint8_t address){
-	uint8_t bank = address & BANK_MASK;
-	if(bank != currentbank){
-		writeOp(BIT_FIELD_CLR,ECON1,0x03);
-		writeOp(BIT_FIELD_SET,ECON1,bank>>5);
-		currentbank = bank;
-	}
-}
-
-
-// second layer operation for setting bank
-static uint8_t enc_read(uint8_t address){
-	set_bank(address);
-	return readOp(READ_CTRL_REG, address);
-}
-
-static void enc_write(uint8_t address, uint8_t data){
-	set_bank(address);
-	writeOp(WRITE_CTRL_REG, address, data);
-}
-
-
-// read and write the data in PHY register
-uint16_t readPhy(uint8_t address){
-	set_bank(MIREGADR);
-	writeOp(WRITE_CTRL_REG,MIREGADR,address);
-	writeOp(BIT_FIELD_SET,MICMD,0x01);
-	set_bank(MISTAT);
-	while(readOp(READ_CTRL_REG,MISTAT) & 0x01){
-		uint8_t meg[]={"wait for readphy\r\n"};
-		HAL_UART_Transmit(&huart2,(uint8_t*)meg,sizeof(meg),HAL_MAX_DELAY);
-		HAL_Delay(500);
-	}
-	set_bank(MICMD);
-	writeOp(BIT_FIELD_CLR,MICMD,0x01);
-	uint8_t phylow = readOp(READ_CTRL_REG,MIRDL);
-	uint8_t phyhigh = readOp(READ_CTRL_REG,MIRDH);
-	return (uint16_t)phyhigh << 8 | phylow;
-}
-
-void writePhy(uint8_t address, uint16_t data){
-	set_bank(MIREGADR);
-	writeOp(WRITE_CTRL_REG,MIREGADR,address);
-	writeOp(WRITE_CTRL_REG,MIWRL,data & 0xFF);
-	writeOp(WRITE_CTRL_REG,MIWRH,data >> 8);
-	set_bank(MISTAT);
-	while(readOp(READ_CTRL_REG,MISTAT) & 0x01){
-		uint8_t meg[]={"wait for writephy\r\n"};
-		HAL_UART_Transmit(&huart2,(uint8_t*)meg,sizeof(meg),HAL_MAX_DELAY);
-		HAL_Delay(500);
-	}
-	set_bank(0x00);
-}
-*/
-
-
-void enc_init_deprecated(void){
-	//soft reset
-	SELECT();
-	uint8_t cmd = SOFT_RESET;
-	HAL_SPI_Transmit(&hspi3,&cmd,1,HAL_MAX_DELAY);
-	DESELECT();
-
-	while(!(readOp(READ_CTRL_REG,ESTAT) & 0x01)){
-		uint8_t meg[]={"wait for ESTAT: CLKRDY\r\n"};
-		HAL_UART_Transmit(&huart2,(uint8_t*)meg,sizeof(meg),HAL_MAX_DELAY);
-		HAL_Delay(500);
-	}
-
-	set_bank(0x00);
-	//program buffer start
-	//writeOp(WRITE_CTRL_REG,ETXSTL,(TXBUFF_START & 0xFF));
-	//writeOp(WRITE_CTRL_REG,ETXSTH,(TXBUFF_START >> 8));
-	//writeOp(WRITE_CTRL_REG,ETXNDL,(TXBUFF_END & 0xFF));
-	//writeOp(WRITE_CTRL_REG,ETXNDH,(TXBUFF_END >> 8));
-	//writeOp(WRITE_CTRL_REG,ERXSTL,(RXBUFF_START & 0xFF));
-	//writeOp(WRITE_CTRL_REG,ERXSTH,(RXBUFF_START >> 8));
-	//writeOp(WRITE_CTRL_REG,ERXNDL,(RXBUFF_END & 0xFF));
-	//writeOp(WRITE_CTRL_REG,ERXNDH,(RXBUFF_END >> 8));
-
-	//writeOp(WRITE_CTRL_REG,ERXRDPTL,(RXRDBUFF_START & 0xFF));
-	//writeOp(WRITE_CTRL_REG,ERXRDPTH,(RXRDBUFF_START >> 8));
-
-	////writeOp(WRITE_CTRL_REG,ERDPTL,(RXBUFF_START & 0xFF));
-	////writeOp(WRITE_CTRL_REG,ERDPTH,(RXBUFF_START >> 8));
-
-	writeOp(WRITE_CTRL_REG,EWRPTL,(TXBUFF_START & 0xFF));
-	writeOp(WRITE_CTRL_REG,EWRPTH,(TXBUFF_START >> 8));
-
-	set_bank(MACON1);
-	//writeOp(WRITE_CTRL_REG,MACON1,0x0D);
-	//writeOp(WRITE_CTRL_REG,MACON3,0x32);
-	//writeOp(WRITE_CTRL_REG,MACON4,0x40);
-	//writeOp(WRITE_CTRL_REG,MABBIPG,0x12);
-	//writeOp(WRITE_CTRL_REG,MAIPGL,0x12);
-	//writeOp(WRITE_CTRL_REG,MAIPGH,0x0C);
-	//writeOp(WRITE_CTRL_REG,MAMXFLL,0xEE);
-	//writeOp(WRITE_CTRL_REG,MAMXFLH,0x05);
-
-	set_bank(MAADR1);
-	//writeOp(WRITE_CTRL_REG, MAADR1, 0x02);
-	//writeOp(WRITE_CTRL_REG, MAADR2, 0x02);
-	//writeOp(WRITE_CTRL_REG, MAADR3, 0x02);
-	//writeOp(WRITE_CTRL_REG, MAADR4, 0x02);
-	//writeOp(WRITE_CTRL_REG, MAADR5, 0x02);
-	//writeOp(WRITE_CTRL_REG, MAADR6, 0x02);
-
-	//writePhy(PHCON1,0x0000); //half duplex
-	//writePhy(PHCON2,0x0100); //HDLDIS
-	writePhy(PHLCON,0x0472); //led
-
-	set_bank(0x00);
-	//writeOp(BIT_FIELD_SET,ECON1,0x04); //rxen
-	writeOp(WRITE_CTRL_REG,ERXFCON,0x00);
-}
-
-void enc_sendpacket_deprecated(uint8_t* data, uint16_t len){
-	set_bank(ETXSTL);
-	writeOp(WRITE_CTRL_REG,ETXSTL,TXBUFF_START & 0xFF);
-	writeOp(WRITE_CTRL_REG,ETXSTH,TXBUFF_START >> 8);
-	writeOp(WRITE_CTRL_REG,EWRPTL,TXBUFF_START & 0xFF);
-	writeOp(WRITE_CTRL_REG,EWRPTH,TXBUFF_START >> 8);
-
-	uint8_t control = 0x00;
-	write_buffer(&control, 1);
-	write_buffer(data, len);
-
-	uint16_t end = TXBUFF_START+len;
-	writeOp(WRITE_CTRL_REG,ETXNDL,end & 0xFF);
-	writeOp(WRITE_CTRL_REG,ETXNDH,end >> 8);
-
-	writeOp(BIT_FIELD_SET,ECON1,0x08);
-	//???
-	uint8_t megdata = readOp(READ_CTRL_REG,ECON1);
-	char meg[30];
-	int meglen = sprintf(meg,"sendpacket_ECON1 = %#04x\r\n",megdata);
-	HAL_UART_Transmit(&huart2,(uint8_t*)meg,meglen,HAL_MAX_DELAY);
-
-}
-
-uint8_t enc_receivepacket_deprecated(uint8_t* date, uint16_t len){
-	//check pktcnt
-	set_bank(EPKTCNT);
-	uint8_t megdata = readOp(READ_CTRL_REG,EPKTCNT);
-	set_bank(0x00);
-	char meg[70];
-	int meglen = sprintf(meg,"receivepacket_pktcnt = %#04x\r\n",megdata);
-	HAL_UART_Transmit(&huart2,(uint8_t*)meg,meglen,HAL_MAX_DELAY);
-	set_bank(0x00);
-
-	//read buffer
-	uint8_t buffer[100];
-	read_buffer(buffer,sizeof(buffer));
-	char meg2[70];
-	int meg2len = sprintf(meg2,"message is %x %x %x %x %x %x\r\n%x %x %x %x %x %x\r\n"
-			,buffer[0],buffer[1],buffer[2],buffer[3],buffer[4],buffer[5]
-			,buffer[6],buffer[7],buffer[8],buffer[9],buffer[10],buffer[11]);
-	HAL_UART_Transmit(&huart2,(uint8_t*)meg2,meg2len,HAL_MAX_DELAY);
-
-	return buffer[99];
-}
-void enc_sendARP_deprecated(){
-	uint8_t myarp[66] = {
-		//destination mac
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-		//source mac
-		0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
-		//ethertype
-		0x08, 0x06,
-		//arp payload
-		0x00, 0x01,
-		0x08, 0x00,
-		0x06, 0x04,
-		0x00, 0x01,
-		0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
-		192, 168, 1, 200,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-		192, 168, 1, 212,
-		0x00,0x00,0x00,0x00,0x00,0x00,
-		0x00,0x00,0x00,0x00,0x00,0x00,
-		0x00,0x00,0x00,0x00,0x00,0x00,
-		0x00,0x00,0x00,0x00,0x00,0x00
-	};
-	enc_sendpacket(myarp,sizeof(myarp));
-};
-
-
-
-
-
-
-
-
-
-
-
 
 
