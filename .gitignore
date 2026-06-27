@@ -1,0 +1,20 @@
+# Artifacts
+
+Debug/
+Release/
+*.elf
+*.bin
+*.hex
+*.map
+*.o
+*.d
+*.su
+*.cyclomatic
+
+# Local Settings
+
+.settings/
+
+# Operating System Garbage
+Thumbs.db
+.DS_Store
