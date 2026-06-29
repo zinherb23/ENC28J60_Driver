@@ -1,10 +1,12 @@
-🌐 ENC28J60_Driver
+🌐 ENC28J60_Driver  
+
 An ENC28J60 driver for the STM32F401RE
 
-🛠️ Tech Stack & Dependencies 
-Language: C11
-Cross-Compiler: arm-none-eabi-gcc
-Hardware Interface: STM32F4xx HAL / CMSIS
+🛠️ Tech Stack & Dependencies  
+
+Language: C11  
+Cross-Compiler: arm-none-eabi-gcc  
+Hardware Interface: STM32F4xx HAL / CMSIS  
 
 📁 Project Structure
 ```text
